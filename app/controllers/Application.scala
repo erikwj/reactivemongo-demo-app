@@ -14,13 +14,13 @@ import reactivemongo.api.gridfs.Implicits.DefaultReadFileReader
 import reactivemongo.api.collections.default.BSONCollection
 import reactivemongo.bson._
 
-import models.Article
-import models.Article._
+import models.Topic
+import models.Topic._
 
-object Articles extends Controller with MongoController {
+object Topics extends Controller with MongoController {
 
-  // get the collection 'articles'
-  val collection = db[BSONCollection]("articles")
+  // get the collection 'topics'
+  val collection = db[BSONCollection]("topics")
   // a GridFS store named 'attachments'
   //val gridFS = new GridFS(db, "attachments")
   val gridFS = new GridFS(db)
@@ -31,7 +31,7 @@ object Articles extends Controller with MongoController {
       Logger.info(s"Checked index, result is $index")
   }
 
-  // list all articles and sort them
+  // list all topics and sort them
   def index = Action.async { implicit request =>
     // get a sort document (see getSort method for more information)
     val sort = getSort(request)
@@ -41,10 +41,10 @@ object Articles extends Controller with MongoController {
       "$query" -> BSONDocument())
     val activeSort = request.queryString.get("sort").flatMap(_.headOption).getOrElse("none")
     // the cursor of documents
-    val found = collection.find(query).cursor[Article]
-    // build (asynchronously) a list containing all the articles
-    found.collect[List]().map { articles =>
-      Ok(views.html.articles(articles, activeSort))
+    val found = collection.find(query).cursor[Topic]
+    // build (asynchronously) a list containing all the topics
+    found.collect[List]().map { topics =>
+      Ok(views.html.topics(topics, activeSort))
     }.recover {
       case e =>
         e.printStackTrace()
@@ -53,20 +53,20 @@ object Articles extends Controller with MongoController {
   }
 
   def showCreationForm = Action {
-    Ok(views.html.editArticle(None, Article.form, None))
+    Ok(views.html.editTopic(None, Topic.form, None))
   }
 
   def showEditForm(id: String) = Action.async {
     val objectId = BSONObjectID(id)
     // get the documents having this id (there will be 0 or 1 result)
-    val futureArticle = collection.find(BSONDocument("_id" -> objectId)).one[Article]
+    val futureTopic = collection.find(BSONDocument("_id" -> objectId)).one[Topic]
     // ... so we get optionally the matching article, if any
     // let's use for-comprehensions to compose futures (see http://doc.akka.io/docs/akka/2.0.3/scala/futures.html#For_Comprehensions for more information)
     for {
       // get a future option of article
-      maybeArticle <- futureArticle
+      maybeTopic <- futureTopic
       // if there is some article, return a future of result with the article and its attachments
-      result <- maybeArticle.map { article =>
+      result <- maybeTopic.map { article =>
         import reactivemongo.api.gridfs.Implicits.DefaultReadFileReader
         // search for the matching attachments
         // find(...).toList returns a future list of documents (here, a future list of ReadFileEntry)
@@ -74,38 +74,38 @@ object Articles extends Controller with MongoController {
           val filesWithId = files.map { file =>
             file.id.asInstanceOf[BSONObjectID].stringify -> file
           }
-          Ok(views.html.editArticle(Some(id), Article.form.fill(article), Some(filesWithId)))
+          Ok(views.html.editTopic(Some(id), Topic.form.fill(article), Some(filesWithId)))
         }
       }.getOrElse(Future(NotFound))
     } yield result
   }
 
   def create = Action.async { implicit request =>
-    Article.form.bindFromRequest.fold(
-      errors => Future.successful(Ok(views.html.editArticle(None, errors, None))),
-      // if no error, then insert the article into the 'articles' collection
+    Topic.form.bindFromRequest.fold(
+      errors => Future.successful(Ok(views.html.editTopic(None, errors, None))),
+      // if no error, then insert the article into the 'topics' collection
       article =>
         collection.insert(article.copy(creationDate = Some(new DateTime()), updateDate = Some(new DateTime()))).map(_ =>
-          Redirect(routes.Articles.index))
+          Redirect(routes.Topics.index))
     )
   }
 
   def edit(id: String) = Action.async { implicit request =>
-    Article.form.bindFromRequest.fold(
-      errors => Future.successful(Ok(views.html.editArticle(Some(id), errors, None))),
+    Topic.form.bindFromRequest.fold(
+      errors => Future.successful(Ok(views.html.editTopic(Some(id), errors, None))),
       article => {
         val objectId = BSONObjectID(id)
         // create a modifier document, ie a document that contains the update operations to run onto the documents matching the query
         val modifier = BSONDocument(
-          // this modifier will set the fields 'updateDate', 'title', 'content', and 'publisher'
+          // this modifier will set the fields 'updateDate', 'title' and 'content'
           "$set" -> BSONDocument(
             "updateDate" -> BSONDateTime(new DateTime().getMillis),
             "title" -> BSONString(article.title),
-            "content" -> BSONString(article.content),
-            "publisher" -> BSONString(article.publisher)))
+            "content" -> BSONString(article.content)
+           ))
         // ok, let's do the update
         collection.update(BSONDocument("_id" -> objectId), modifier).map { _ =>
-          Redirect(routes.Articles.index)
+          Redirect(routes.Topics.index)
         }
       })
   }
@@ -140,7 +140,7 @@ object Articles extends Controller with MongoController {
     } yield updateResult
 
     futureUpdate.map {
-      case _ => Redirect(routes.Articles.showEditForm(id))
+      case _ => Redirect(routes.Topics.showEditForm(id))
     }.recover {
       case e => InternalServerError(e.getMessage())
     }
@@ -167,9 +167,104 @@ object Articles extends Controller with MongoController {
             field.drop(1) -> -1
           else field -> 1
         }
-        if order._1 == "title" || order._1 == "publisher" || order._1 == "creationDate" || order._1 == "updateDate"
+        if order._1 == "title" || order._1 == "creationDate" || order._1 == "updateDate"
       } yield order._1 -> BSONInteger(order._2)
       BSONDocument(sortBy)
     }
   }
 }
+
+
+
+
+/*
+
+import scala.collection.JavaConversions._
+import scala.util.matching.Regex
+import com.faqtfinding.tools._
+import concurrent.Future
+import concurrent.ExecutionContext.Implicits.global
+import scala.util.{Success, Failure}
+
+import java.io.File
+import java.util.Base64
+
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.file.Path
+
+
+//import java.util.concurrent.Executors
+//import concurrent.ExecutionContext
+//val executorService = Executors.newFixedThreadPool(4)
+//val executionContext = ExecutionContext.fromExecutorService(executorService)
+
+
+val IMAGE_FORMAT = ".png"
+
+/*
+ * Regex for filtering extension
+ */
+val file_r = """(.*)(\.[a-zA-Z]+)$""".r
+
+def getFiles(dir: File,r: Regex): Stream[File] = 
+  if (dir.isDirectory) dir.listFiles().toStream.filter(f => r.findFirstIn(f.getName).isDefined)
+  else Stream.Empty
+
+val uploadedFile = new File("/Users/erikjanssen/ScalaProjects/cli/resources/Layouts.pdf")
+val dir = new File(uploadedFile.getParent)
+val fname = uploadedFile.getName
+
+
+
+val (sourcePath,destinationPath) = fname match { 
+  case file_r(name,ext) => (dir + "/" + fname,dir + "/" + name + IMAGE_FORMAT) }
+
+//if(sourcePath == destinationPath ) saveToGrid(source)
+//else convertToPng(sourcePath,destinationPath)
+
+//val pdf = validPdf(uploadedFile)
+
+val pdf = new File(sourcePath)
+val imgtemplate = new File(destinationPath)
+
+val convertedPngRegex = imgtemplate.getName match { 
+  case file_r(name,ext) => new Regex(s"""$name""" + """-\d+""" + """\""" + s"""$ext""")
+}
+
+val config = new ImageConverterConfig { density := 200 }
+val ic = ImageConverter(config)
+
+/*
+* Again, if you have long-running computations, having them run in a separate ExecutionContext 
+* for CPU-bound tasks is a good idea. How to tune your various thread pools is highly dependent 
+* on your individual application and beyond the scope of this article.
+*/
+val imageConversion = Future { ic.run(pdf,imgtemplate) }
+
+//Specific images
+//file.saveTo("/users/registeredusers/summaries/summaryname/images/")
+//generic images uploaded by e.g. mail
+//file.saveTo("/users/registeredusers/images/")
+
+val encoder = Base64.getEncoder()
+
+val result = imageConversion.onComplete {
+    case Success(rc) => 
+      val files = getFiles(dir,convertedPngRegex )
+      //files map {(png) => saveToGrid(png)}
+      files.foreach((pdf) => println(encoder.encodeToString(Files.readAllBytes(pdf.toPath)).substring(0,100)))
+    case Failure(ex) =>
+      println(s"Pdf couldn't be converted to $IMAGE_FORMAT: ${ex.getMessage}")
+  }
+
+<img src=”data:<MIMETYPE>;base64,<BASE64_ENCODED_IMAGE>”>
+
+def imageToHtml(format:String,dataB64:String) = s"""<img src=”data:image/$format;base64,$dataB64">"""
+
+<img src="images/photo.jpg" width="400" height="300" ¬
+    alt="A descriptive text of the image" />
+
+<img data-natural-height="899" data-natural-width="1600" style="visibility: visible;" src="https://s3.amazonaws.com/media-p.slid.es/uploads/erikjanssen/images/909665/DSC07668.JPG"></div></div>
+
+*/

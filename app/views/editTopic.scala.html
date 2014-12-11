@@ -1,0 +1,73 @@
+@(id: Option[String], form: Form[models.Topic], files: Option[List[(String, reactivemongo.api.gridfs.ReadFile[reactivemongo.bson.BSONValue])]])
+
+@import helper.b3FieldConstructor
+
+@implicitField = @{ helper.FieldConstructor(b3FieldConstructor.f) }
+
+
+@main("Welcome to ReactiveMongo") {
+
+<div class="row">
+    <div class="span12">
+      <h3>navbar</h3>
+    </div>
+</div>
+<div class="row">
+
+
+  <div class="span10">
+
+    @helper.form(action = (if(!id.isDefined) routes.Topics.create else routes.Topics.edit(id.get))) {
+
+      <h3>
+      @helper.inputText(form("title"),'class -> "col-lg-6 col-md-8 col-sm-10 col-xs-12 title")
+      </h3>
+
+      @helper.repeat(form("tags"), min = 1) { tagField =>
+          @helper.inputText(tagField,'class -> "tag")
+      }
+
+
+      @helper.textarea(form("content"),'class -> "form-control span12", 'rows -> "40")
+<!-- https://www.playframework.com/documentation/2.3.x/ScalaCustomFieldConstructors
+
+Always add labels
+
+Screen readers will have trouble with your forms if you don't include a label for every input. For these inline forms, you can hide the labels using the .sr-only class. There are further alternative methods of providing a label for assistive technologies, such as the aria-label, aria-labelledby or title attribute. If none of these is present, screen readers may resort to using the placeholder attribute, if present, but note that use of placeholder as a replacement for other labelling methods is not advised.
+
+ -->
+      <div class="form-actions">
+        <input class="btn btn-primary" type="submit">
+      </div>
+
+    }
+    </div>
+
+    
+      <script>
+    CKEDITOR.inline( 'content' );
+  </script>
+  </div>
+    @*
+    <div class="span4">
+    <h2>Attachments</h2>
+    @if(id.isDefined) {
+      @if(files.isDefined) {
+      <ul>
+        @files.get.map { file =>
+        <li><a href="@routes.Topics.getAttachment(file._1)">@file._2.filename</a> - <a target="_blank" href="@routes.Topics.getAttachment(file._1)?inline=true">inline</a> - <a class="delete" href="@routes.Topics.removeAttachment(file._1)">delete</a></li>
+        }
+      </ul>
+      }
+      @helper.form(action = routes.Topics.saveAttachment(id.get), 'enctype -> "multipart/form-data") {
+        <input type="file" name="picture">
+        <div>
+          <input type="submit" class="btn">
+        </div>
+      }
+    }
+    </div>
+    *@
+
+  
+}
